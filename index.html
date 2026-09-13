@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MinePRMP - AI Mod Analyzer</title>
+    <link rel="stylesheet" href="style.css">
+    <!-- Google Fonts for Modern + Minecraft/Terminal feel -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600&family=VT323&display=swap" rel="stylesheet">
+    <!-- JSZip library -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+</head>
+<body>
+
+    <!-- NOTIFICATION TOAST -->
+    <div id="notificationArea" class="notification hidden"></div>
+
+    <!-- API KEY SETUP SCREEN -->
+    <div id="setupScreen" class="screen">
+        <div class="setup-box block-panel">
+            <h1 class="mc-title">MinePRMP</h1>
+            <p>Please Put Any AI api key (private)</p>
+            
+            <div class="form-group">
+                <label for="apiProvider">Select Provider</label>
+                <select id="apiProvider" class="mc-input">
+                    <option value="groq">Groq (Fastest)</option>
+                    <option value="openai">OpenAI</option>
+                    <option value="other">Other (OpenAI Compatible)</option>
+                </select>
+            </div>
+
+            <div class="form-group" id="customEndpointGroup" style="display: none;">
+                <label for="customEndpoint">Custom Endpoint URL</label>
+                <input type="text" id="customEndpoint" class="mc-input" placeholder="https://api.your-provider.com/v1/chat/completions">
+            </div>
+
+            <div class="form-group">
+                <label for="apiKeyInput">Enter Api Key</label>
+                <input type="password" id="apiKeyInput" class="mc-input" placeholder="sk-...">
+            </div>
+
+            <button id="continueBtn" class="mc-btn">Continue</button>
+        </div>
+    </div>
+
+    <!-- MAIN APP SCREEN -->
+    <div id="mainScreen" class="screen hidden">
+        <div class="container">
+            <header>
+                <div class="header-top">
+                    <h1 class="mc-title">MinePRMP</h1>
+                    <button id="resetApiBtn" class="mc-btn small-btn outline">Change API Key</button>
+                </div>
+                <p>Upload a .zip, .mcpack, or .mcaddon to generate AI prompts.</p>
+            </header>
+
+            <main>
+                <div class="upload-zone block-panel" id="uploadZone">
+                    <input type="file" id="fileInput" accept=".zip,.mcpack,.mcaddon" hidden>
+                    <button id="uploadBtn" class="mc-btn">Select Mod File</button>
+                    <p id="fileName">No file selected</p>
+                </div>
+
+                <div class="terminal block-panel">
+                    <div class="terminal-header">
+                        <span>Terminal_ // MinePRMP.exe</span>
+                    </div>
+                    <div class="terminal-body" id="consoleOutput">
+                        <p class="system-msg">> System initialized. Waiting for file...</p>
+                    </div>
+                </div>
+
+                <div class="results block-panel hidden" id="resultsSection">
+                    <h2 class="mc-title-small">Generated Mod Prompts</h2>
+                    <ul id="promptList"></ul>
+                </div>
+            </main>
+        </div>
+    </div>
+
+    <script src="script.js"></script>
+</body>
+</html>
