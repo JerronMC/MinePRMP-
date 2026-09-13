@@ -49,10 +49,6 @@ continueBtn.addEventListener('click', () => {
         showNotification("Please enter a valid API Key.", "error");
         return;
     }
-    if (provider === 'other' && !endpoint) {
-        showNotification("Please enter a custom endpoint URL.", "error");
-        return;
-    }
 
     localStorage.setItem(STORAGE_KEY, key);
     localStorage.setItem(STORAGE_PROVIDER, provider);
@@ -100,7 +96,7 @@ fileInput.addEventListener('change', async (e) => {
     fileNameDisplay.textContent = file.name;
     resultsSection.classList.add('hidden');
     promptList.innerHTML = '';
-    consoleOutput.innerHTML = ''; // Clear terminal
+    consoleOutput.innerHTML = ''; 
     
     logToConsole(`> Uploaded: ${file.name} (${(file.size / 1024).toFixed(2)} KB)`);
     logToConsole('> Initiating unzipping process...');
@@ -124,7 +120,7 @@ async function processModFile(file) {
         const zipContent = await zip.loadAsync(file);
         
         let fileStructure = [];
-        let importantData = ""; // We will compile a snippet of data to send to AI
+        let importantData = ""; 
         let fileCount = 0;
 
         for (const [relativePath, zipEntry] of Object.entries(zipContent.files)) {
@@ -133,7 +129,6 @@ async function processModFile(file) {
                 logToConsole(`> Extracted: ${relativePath}`);
                 fileStructure.push(relativePath);
                 
-                // Read a few important files to give AI context (limit to avoid token max)
                 if ((relativePath.endsWith('.json') || relativePath.endsWith('.js') || relativePath.endsWith('.ts')) && importantData.length < 5000) {
                     const content = await zipEntry.async("string");
                     importantData += `\n--- File: ${relativePath} ---\n${content.substring(0, 500)}\n`;
@@ -155,34 +150,41 @@ async function processModFile(file) {
 
 // --- AI API Integration ---
 async function generateAIPrompts(contextPayload) {
-    logToConsole('> Establishing secure connection to AI Provider...', "system");
+    logToConsole('> Establishing connection bypassing CORS...', "system");
     
     const key = localStorage.getItem(STORAGE_KEY);
     const provider = localStorage.getItem(STORAGE_PROVIDER);
     
-    let apiUrl = "";
+    // We use corsproxy.io to force the browser to allow the connection
+    const proxyBase = "https://corsproxy.io/?"; 
+    
+    let targetUrl = "";
     let model = "";
 
-    // Set configuration based on provider choice
     if (provider === "groq") {
-        apiUrl = "https://api.groq.com/openai/v1/chat/completions";
-        model = "llama3-8b-8192"; 
+        targetUrl = "https://api.groq.com/openai/v1/chat/completions";
+        model = "llama-3.1-8b-instant"; 
     } else if (provider === "openai") {
-        apiUrl = "https://api.openai.com/v1/chat/completions";
+        targetUrl = "https://api.openai.com/v1/chat/completions";
         model = "gpt-3.5-turbo";
     } else {
-        apiUrl = localStorage.getItem(STORAGE_ENDPOINT);
-        model = "default-model"; // Custom endpoints might ignore this or require a specific one
+        targetUrl = localStorage.getItem(STORAGE_ENDPOINT);
+        model = "default-model"; 
     }
+
+    // Combine the proxy and the encoded target URL
+    const finalUrl = proxyBase + encodeURIComponent(targetUrl);
 
     const promptMessage = `You are a Minecraft Bedrock Modding expert. Analyze the following mod structure and code snippets. Generate 3 to 6 creative modding prompts/ideas based on this specific mod. Output ONLY a valid JSON array of strings, nothing else. Example: ["Prompt 1", "Prompt 2"].\n\nData:\n${contextPayload}`;
 
     try {
-        const response = await fetch(apiUrl, {
+        const response = await fetch(finalUrl, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
-                'Authorization': `Bearer ${key}`
+                'Authorization': `Bearer ${key}`,
+                // Prevent proxy caching issues
+                'x-requested-with': 'XMLHttpRequest'
             },
             body: JSON.stringify({
                 model: model,
@@ -191,26 +193,22 @@ async function generateAIPrompts(contextPayload) {
             })
         });
 
-        if (response.status === 401) {
-            throw new Error("API_KEY_EXPIRED");
-        }
         if (!response.ok) {
-            throw new Error(`API Error: ${response.statusText}`);
+            const errorData = await response.json().catch(() => ({}));
+            const errorMsg = errorData.error?.message || response.statusText;
+            throw new Error(`API Refused: ${errorMsg} (Status: ${response.status})`);
         }
 
         const data = await response.json();
         const aiResponse = data.choices[0].message.content;
         
-        logToConsole('> Response received. Parsing JSON output...', "system");
+        logToConsole('> Response received. Parsing output...', "system");
         
-        // Try to parse the AI output as a JSON array
         let prompts = [];
         try {
-            // Strip out markdown code blocks if the AI added them
             const cleanJson = aiResponse.replace(/```json/g, '').replace(/```/g, '').trim();
             prompts = JSON.parse(cleanJson);
         } catch (e) {
-            // Fallback if AI didn't format as JSON array
             prompts = aiResponse.split('\n').filter(p => p.trim().length > 5);
         }
 
@@ -218,15 +216,13 @@ async function generateAIPrompts(contextPayload) {
         logToConsole('> Task Complete.', "system");
 
     } catch (error) {
-        if (error.message === "API_KEY_EXPIRED") {
-            logToConsole(`> CONNECTION REFUSED: API Key is invalid or expired.`, "error");
-            showNotification("API Key is invalid or expired. Please enter a new one.", "error");
-            // Clear storage and send user back to setup
-            localStorage.removeItem(STORAGE_KEY);
-            setTimeout(() => showSetupScreen(), 2000);
+        logToConsole(`> CONNECTION ERROR: ${error.message}`, "error");
+        
+        if (error.message.includes("401")) {
+            logToConsole(`> API Key is likely incorrect. Please change it.`, "error");
+            showNotification("Invalid API Key.", "error");
         } else {
-            logToConsole(`> FETCH ERROR: ${error.message}`, "error");
-            showNotification(`Error: ${error.message}`, "error");
+            showNotification("Check terminal for error details.", "error");
         }
     }
 }
@@ -234,7 +230,6 @@ async function generateAIPrompts(contextPayload) {
 function displayPrompts(prompts) {
     resultsSection.classList.remove('hidden');
     prompts.forEach(promptText => {
-        // clean up numbering if AI left them in the strings
         const cleanText = promptText.replace(/^[0-9]+\.\s*/, '').replace(/^-\s*/, '').replace(/^"|"$/g, '');
         const li = document.createElement('li');
         li.textContent = cleanText;
@@ -244,4 +239,3 @@ function displayPrompts(prompts) {
 
 // Run on page load
 init();
-
